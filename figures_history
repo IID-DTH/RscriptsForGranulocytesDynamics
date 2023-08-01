@@ -1,0 +1,261 @@
+
+
+########bulk RNA-seq
+bg_all<-ballgown(dataDir = "./ballgown",samplePattern = "mRNA")
+sample_bulk<-read.delim("sampleSheet_bulk.txt")
+rownames(sample_bulk)<-sample_bulk$sampleID
+sample_bulk$sampleID<-as.character(sample_bulk$sampleID)
+sample_bulk$fpkm<-paste0("FPKM.",sample_bulk$sampleID)
+pData(bg_all)<-sample_bulk[sampleNames(bg_all),]
+gexpr_all<-gexpr(bg_all)
+gexpr_all<-gexpr_all[,sample_bulk$fpkm]
+colnames(gexpr_all)<-sample_bulk$sampleID
+
+gexpr_all<-gexpr_all[apply(gexpr_all,1,max)>1,]
+log_gexpr_all<-log(gexpr_all+1)
+
+stat_results = stattest(bg, feature='gene', meas='FPKM', 
+  covariate='group')
+sample_bulk$Condition=factor(sample_bulk$Condition,levels = c("NAIVE","LPS","CLP","CLP-LPS"))
+
+
+##Figure 4A
+my_statest<-function(bg_subset,log=T,group){
+  expr_subset=gexpr(bg_subset)
+  if(log==T){
+    expr_subset=log(expr_subset+1)
+  }
+exp_t_test_p<-function(a){
+  t.test(a~pData(bg_subset)[,group])$p.value
+}
+
+p_value<-apply(expr_subset,1,exp_t_test_p)
+exp_t_test_est<-function(a){
+  t.test(a~pData(bg_subset)[,group])$estimate
+}
+est_sub<-apply(expr_subset,1,exp_t_test_est)
+
+stat_res=data.frame(t(rbind(p_value,est_sub)))
+stat_res$lgfc=stat_res[,3]-stat_res[,2]
+stat_res$fdr=p.adjust(stat_res$p_value,method = "fdr")
+return(stat_res)
+}
+
+stat_res_lclg1=my_statest(bg_lcl_g1,log = T,group="Condition")
+stat_res_lclg1$cell="G1"
+stat_res_lclg1$condition="LPS vs CLP-LPS"
+stat_res_lclg1$lgfc=-stat_res_lclg1$lgfc
+stat_res_lclg1$geneID=rownames(stat_res_lclg1)
+stat_res_lclg2=my_statest(bg_lcl_g2,log = T,group="Condition")
+stat_res_lclg2$cell="G2"
+stat_res_lclg2$condition="LPS vs CLP-LPS"
+stat_res_lclg2$lgfc=-stat_res_lclg2$lgfc
+stat_res_lclg2$geneID=rownames(stat_res_lclg2)
+stat_res_lclg3=my_statest(bg_lcl_g3,log = T,group="Condition")
+stat_res_lclg3$cell="G3"
+stat_res_lclg3$condition="LPS vs CLP-LPS"
+stat_res_lclg3$lgfc=-stat_res_lclg3$lgfc
+stat_res_lclg3$geneID=rownames(stat_res_lclg3)
+stat_res_lcl=rbind(stat_res_lclg1,stat_res_lclg2,stat_res_lclg3)
+stat_res_lcl$geneCond="none"
+
+stat_res_lcl[stat_res_lcl$lgfc> log(2)&stat_res_lcl$p_value<0.1,"geneCond"]="Up"
+stat_res_lcl[stat_res_lcl$lgfc< -log(2)&stat_res_lcl$p_value<0.1,"geneCond"]="Down"
+ggplot(stat_res_lcl,aes(x=lgfc,y=-log10(p_value),col=geneCond))+geom_point()+facet_grid(condition~cell)+geom_hline(yintercept = -log10(0.05))+geom_vline(xintercept = c(log(2),log(0.5)))+scale_color_manual(values=brewer.pal(9,"Set1")[c(2,9,1)])+theme_light()
+
+##Figure 4B
+log_gexpr_lcl=t(scale(t(log_gexpr_lcl)))
+log_gexpr_G1_lcl=log_gexpr_lcl[,c(1,2)]
+log_gexpr_G1_lcl=log_gexpr_G1_lcl[order(log_gexpr_G1_lcl[,1]),]
+ pheatmap(log_gexpr_G1_lcl,cluster_rows =F,cluster_cols  = F,show_rownames = F,color= colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100))
+ 
+ log_gexpr_G2_lcl=log_gexpr_lcl[,c(3,4)]
+log_gexpr_G2_lcl=log_gexpr_G2_lcl[order(log_gexpr_G2_lcl[,1]),]
+ pheatmap(log_gexpr_G2_lcl,cluster_rows =F,cluster_cols  = F,show_rownames = F,color= colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100))
+ 
+ log_gexpr_G3_lcl=log_gexpr_lcl[,c(5,6)]
+log_gexpr_G3_lcl=log_gexpr_G3_lcl[order(log_gexpr_G3_lcl[,1]),]
+ pheatmap(log_gexpr_G3_lcl,cluster_rows =F,cluster_cols  = F,show_rownames = F,color= colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100))
+
+##Figure 4C
+go_bp1=read.delim("GO_BP1_david_enrich.txt")
+p1= ggplot(subset(go_bp1,CellName=="G1"),aes(x=Term,y=-log10(PValue)))+geom_bar(stat="identity")+coord_flip()+theme_classic()+xlim(rev(as.character(subset(go_bp1,CellName=="G1")$Term)))
+p2= ggplot(subset(go_bp1,CellName=="G2"),aes(x=Term,y=-log10(PValue)))+geom_bar(stat="identity")+coord_flip()+theme_classic()+xlim(rev(as.character(subset(go_bp1,CellName=="G2")$Term)))
+p3= ggplot(subset(go_bp1,CellName=="G3"),aes(x=Term,y=-log10(PValue)))+geom_bar(stat="identity")+coord_flip()+theme_classic()+xlim(rev(as.character(subset(go_bp1,CellName=="G3")$Term)))
+
+##Figure 4D
+entrez_G3=data.frame(entrizID=idConverter(ids=subset(stat_res_lcl,cell=="G3"&geneCond!="none")$geneID,srcSpecies="MUSMU",destSpecies="MUSMU",srcIDType="ENSEMBL",destIDType="EG"))
+kk_G3=enrichKEGG(gene=entrez_G3$entrizID,organism  = 'mmu',pvalueCutoff  = 0.05)
+dotplot(kk_G3)
+
+##Figure 4E-G
+log_gexpr_all_scale=t(scale(t(log_gexpr_all)))
+
+list_tlr4=read.delim("tlr4_pathway.txt")
+list_glu=read.delim("glycy_pathway.txt")
+list_ppp=read.delim("ppp_pathway.txt")
+list_fatty=read.delim("fatty_acid_pathway.txt")
+
+list_tlr4=merge(list_tlr4,geneIDmap,by.x="Gene",by.y="geneName")
+list_tlr4=list_tlr4[list_tlr4$ID %in% rownames(log_gexpr_all),]
+
+list_glu=merge(list_glu,geneIDmap,by.x="Gene",by.y="geneName")
+list_glu=list_glu[list_glu$ID %in% rownames(log_gexpr_all),]
+
+list_ppp=merge(list_ppp,geneIDmap,by.x="Gene",by.y="geneName")
+list_ppp=list_ppp[list_ppp$ID %in% rownames(log_gexpr_all),]
+
+list_fatty=merge(list_fatty,geneIDmap,by.x="Gene",by.y="geneName")
+list_fatty=list_fatty[list_fatty$ID %in% rownames(log_gexpr_all),]
+
+
+exp_weighted_score=data.frame(
+  tlr4_score=apply(log_gexpr_all[list_tlr4$ID,]*list_tlr4$weight,2,sum),
+  glu_score=apply(log_gexpr_all[list_glu$ID,]*list_glu$weight,2,sum),
+  ppp_score=apply(log_gexpr_all[list_ppp$ID,]*list_ppp$weight,2,sum),
+  fatty_score=apply(log_gexpr_all[list_fatty$ID,]*list_fatty$weight,2,sum))
+
+exp_weighted_score$sampleID=rownames(exp_weighted_score)
+exp_weighted_score=merge(exp_weighted_score,sample_bulk)
+
+p1=ggplot(subset(exp_weighted_score,CellName!="M"),aes(x=CellName,fill=Condition,y=tlr4_score))+geom_boxplot()+theme_classic()+ggtitle("TLR4 pathway: 53 genes")
+p2=ggplot(subset(exp_weighted_score,CellName!="M"),aes(x=CellName,fill=Condition,y=glu_score))+geom_boxplot()+theme_classic()+ggtitle("Glycolysis and pyruvate oxidatite pathway: 17 genes")
+p3=ggplot(subset(exp_weighted_score,CellName!="M"),aes(x=CellName,fill=Condition,y=ppp_score))+geom_boxplot()+theme_classic()+ggtitle("PPP pathway: 7 genes")
+p4=ggplot(subset(exp_weighted_score,CellName!="M"),aes(x=CellName,fill=Condition,y=fatty_score))+geom_boxplot()+theme_classic()+ggtitle("Fatty acid biosynthesis pathway: 5 genes")
+
+grid.arrange(p1,p2,p3,p4)
+
+
+###########For scRNA-seq
+library(Seurat)
+library(magrittr)
+library(dplyr)
+library(monocle2)
+
+nlcl_group=data.frame(row.names = colnames(nlcl))
+nlcl_group$group="Naive"
+nlcl_group[grep("-2",rownames(nlcl_group)),"group"]="LPS"
+nlcl_group[grep("-3",rownames(nlcl_group)),"group"]="CLP"
+nlcl_group[grep("-4",rownames(nlcl_group)),"group"]="CLP-LPS"
+
+nlcl_filtered <- Read10X(data.dir = "CLP_LPS_aggr/outs/filtered_gene_bc_matrices_mex/mm10/")
+nlcl <- CreateSeuratObject(counts = nlcl_filtered, project = "nlcl", min.cells = 3, min.features = 200, meta.data = nlcl_group)
+nlcl[["percent.mt"]] <- PercentageFeatureSet(nlcl, pattern = "^mt-")
+nlcl=subset(nlcl,subset=nFeature_RNA >200 & percent.mt < 5)
+
+nlcl.list <- SplitObject(nlcl, split.by = "group")
+for (i in 1:length(nlcl.list)) {
+    nlcl.list[[i]] <- NormalizeData(nlcl.list[[i]], verbose = FALSE)
+    nlcl.list[[i]] <- FindVariableFeatures(nlcl.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+}
+nlcl.anchors <- FindIntegrationAnchors(object.list = nlcl.list, dims = 1:30)
+nlcl.integrated <- IntegrateData(anchorset = nlcl.anchors, dims = 1:30)
+DefaultAssay(nlcl.integrated) <- "integrated"
+nlcl.integrated <- ScaleData(nlcl.integrated, verbose = FALSE)
+nlcl.integrated <- RunPCA(nlcl.integrated, npcs = 30, verbose = FALSE)w
+nlcl.integrated <- RunTSNE(nlcl.integrated, reduction = "pca", dims = 1:30)
+#ElbowPlot(nlcl.integrated)
+
+nlcl.integrated <- FindNeighbors(nlcl.integrated, dims = 1:15)
+nlcl.integrated <- FindClusters(nlcl.integrated)
+nlcl.integrated$group=factor(nlcl.integrated$group,levels=c("Naive","LPS","CLP","CLP-LPS"))
+nlcl_clust=data.frame(cluster=Idents(nlcl.integrated))
+nlcl_clust$group=nlcl.integrated$group
+nlcl_clust$celltype="Granulocyte"
+nlcl_clust[nlcl_clust$cluster %in% c(8,10,17),]$celltype = "Monocyte"
+nlcl_clust[nlcl_clust$cluster %in% c(14,15),"celltype"] = "Erthrocyte"
+nlcl_clust[nlcl_clust$cluster ==16 ,"celltype"] = "T cell"
+nlcl.integrated$celltype=nlcl_clust$celltype
+
+nlcl_granu=subset(nlcl.integrated,celltype=="Granulocyte")
+
+nlcl_granu <- FindClusters(nlcl_granu,resolution = 0.2)
+nlcl.markers_0.2 <- FindAllMarkers(nlcl_granu, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+nlcl_granu$cluster_0.2=factor(nlcl_granu$integrated_snn_res.0.2,levels = c(4,3,1,0,2),labels = c("G1","G2","G3","G4","G5"))
+
+
+gene_nlcl<-load_cellranger_matrix("./CLP_LPS_aggr")
+fd_nlcl <- fData(gene_nlcl)
+colnames(fd_nlcl)[2] <- "gene_short_name"
+cds_nlcl <- newCellDataSet(exprs(gene_nlcl),
+                           phenoData = new("AnnotatedDataFrame", data = pData(gene_nlcl)),
+                           featureData = new("AnnotatedDataFrame", data = fd_nlcl),
+                           lowerDetectionLimit = 0.5,
+                           expressionFamily = negbinomial.size())
+cds_nlcl <- estimateSizeFactors(cds_nlcl)
+cds_nlcl <- estimateDispersions(cds_nlcl)
+
+cds_nlcl_granu <- cds_nlcl[,pData(cds_nlcl)$barcode %in% granu_cluster$id ]
+
+pData(cds_nlcl_granu)=cbind(pData(cds_nlcl_granu),granu_cluster[rownames(pData(cds_nlcl_granu)),c("cluster","group")])
+colnames(pData(cds_nlcl_granu))[3]="cluster_seurat"
+cds_nlcl_granu <- detectGenes(cds_nlcl_granu, min_expr = 0.1)
+fData(cds_nlcl_granu)$use_for_ordering <- fData(cds_nlcl_granu)$num_cells_expressed > 0.05 * ncol(cds_nlcl_granu)
+
+granu_diff<-read.delim("granu_diff.txt",stringsAsFactors = F)
+granu_diff<- merge(granu_diff,fData(cds_nlcl_granu)[,c("id","gene_short_name","num_cells_expressed")],by.x="gene",by.y="gene_short_name",all.x=T)
+cds_nlcl_granu_ps=cds_nlcl_granu
+fData(cds_nlcl_granu_ps)$use_for_ordering <- fData(cds_nlcl_granu_ps)$gene_short_name %in% subset(granu_diff,num_cells_expressed>10)$gene
+cds_nlcl_granu_ps <- reduceDimension(cds_nlcl_granu_ps,method = 'DDRTree',cores=8)
+cds_nlcl_granu_ps <- orderCells(cds_nlcl_granu_ps,reverse = T)
+plot_cell_trajectory(cds_nlcl_granu_ps,color_by = "cluster_seurat",show_branch_points=F)+facet_wrap(~group)
+ggplot(pData(cds_nlcl_granu_ps),aes(x=Pseudotime,fill=cluster_seurat))+geom_histogram(bins = 100)+theme_classic()+facet_grid(group~.)
+
+granu_nl_diff=data.frame()
+for (i in 1:nlevels(granu_cluster_0.2$cluster)){
+    tmp_nl = differentialGeneTest(cds_nlcl_granu[fData(cds_nlcl_granu)$num_cells_expressed >= 10, subset(granu_cluster_0.2,cluster == levels(granu_cluster_0.2$cluster)[i] & group %in% c("Naive", "LPS"))$id],fullModelFormulaStr = '~group', cores = 8)
+    tmp_nl$cluster = levels(granu_cluster_0.2$cluster)[i]
+    #tmp_nl=subset(tmp_nl,qval<0.01)
+    granu_nl_diff=rbind(granu_nl_diff,tmp_nl)
+}
+
+granu_cl_diff=data.frame()
+for (i in 1:nlevels(granu_cluster_0.2$cluster)){
+    tmp_nl = differentialGeneTest(cds_nlcl_granu[fData(cds_nlcl_granu)$num_cells_expressed >= 10, subset(granu_cluster_0.2,cluster == levels(granu_cluster_0.2$cluster)[i] & group %in% c("CLP", "CLP-LPS"))$id],fullModelFormulaStr = '~group', cores = 8)
+    tmp_nl$cluster = levels(granu_cluster_0.2$cluster)[i]
+#    tmp_nl=subset(tmp_nl,qval<0.001)
+    granu_cl_diff=rbind(granu_cl_diff,tmp_nl)
+}
+
+nl_group_exp_logFC=data.frame(row.names = rownames(nlcl_cluster_group_exp2),
+    G1=log2(nlcl_cluster_group_exp2$G1_LPS+0.1)-log2(nlcl_cluster_group_exp2$G1_Naive+0.1),
+    G2=log2(nlcl_cluster_group_exp2$G2_LPS+0.1)-log2(nlcl_cluster_group_exp2$G2_Naive+0.1),
+    G3=log2(nlcl_cluster_group_exp2$G3_LPS+0.1)-log2(nlcl_cluster_group_exp2$G3_Naive+0.1),
+    G4=log2(nlcl_cluster_group_exp2$G4_LPS+0.1)-log2(nlcl_cluster_group_exp2$G4_Naive+0.1),
+    G5=log2(nlcl_cluster_group_exp2$G5_LPS+0.1)-log2(nlcl_cluster_group_exp2$G5_Naive+0.1))
+cl_group_exp_logFC=data.frame(row.names = rownames(nlcl_cluster_group_exp2),
+    G1=log2(nlcl_cluster_group_exp2$G1_CLP.LPS+0.1)-log2(nlcl_cluster_group_exp2$G1_CLP+0.1),
+    G2=log2(nlcl_cluster_group_exp2$G2_CLP.LPS+0.1)-log2(nlcl_cluster_group_exp2$G2_CLP+0.1),
+    G3=log2(nlcl_cluster_group_exp2$G3_CLP.LPS+0.1)-log2(nlcl_cluster_group_exp2$G3_CLP+0.1),
+    G4=log2(nlcl_cluster_group_exp2$G4_CLP.LPS+0.1)-log2(nlcl_cluster_group_exp2$G4_CLP+0.1),
+    G5=log2(nlcl_cluster_group_exp2$G5_CLP.LPS+0.1)-log2(nlcl_cluster_group_exp2$G5_CLP+0.1))
+mt_nl_logFC<-melt(as.matrix(nl_group_exp_logFC))
+colnames(mt_nl_logFC) =c("id","cluster","logFC")
+mt_nl_logFC=merge(granu_nl_diff,mt_nl_logFC)
+mt_nl_logFC$group="non"
+mt_nl_logFC[mt_nl_logFC$pval<0.05&mt_nl_logFC$logFC>1,"group"]="Up"
+mt_nl_logFC[mt_nl_logFC$pval<0.05&mt_nl_logFC$logFC< -1,"group"]="Down"
+
+mt_cl_logFC<-melt(as.matrix(cl_group_exp_logFC))
+colnames(mt_cl_logFC) =c("id","cluster","logFC")
+mt_cl_logFC=merge(granu_cl_diff,mt_cl_logFC)
+mt_cl_logFC$group="non"
+mt_cl_logFC[mt_cl_logFC$pval<0.05&mt_cl_logFC$logFC>1,"group"]="Up"
+mt_cl_logFC[mt_cl_logFC$pval<0.05&mt_cl_logFC$logFC< -1,"group"]="Down"
+
+nl_sig=unique(subset(mt_nl_logFC,num_cells_expressed>100&group=="Up")$id)
+cl_sig=unique(subset(mt_cl_logFC,num_cells_expressed>100&group=="Up")$id)
+cds_nlcl_granu_lps<-setOrderingFilter(cds_nlcl_granu,union(nl_sig,cl_sig))
+cds_nlcl_granu_lps<-setOrderingFilter(cds_nlcl_granu,rownames(list_lps_response))
+cds_nlcl_granu_lps <- reduceDimension(cds_nlcl_granu_lps,  reduction_method = 'DDRTree',cores=8)
+cds_nlcl_granu_lps <-orderCells(cds_nlcl_granu_lps,reverse = T)
+plot_cell_trajectory(cds_nlcl_granu_lps,color_by = "cluster_0.2",show_branch_points = F)+facet_wrap(~group)
+
+pseudotime_lps=(pData(cds_nlcl_granu_lps))[,c(1,4,13,14,15)]
+colnames(pseudotime_lps)[5]="pseudotime_lps"
+pseudotime_diff=pData(cds_nlcl_granu_ps)[,c(1,4,12,14)]
+colnames(pseudotime_diff)[3]="pseudotime_diff"
+ pseudotime_lps=merge(pseudotime_lps,pseudotime_diff)
+ ggplot(pseudotime_lps,aes(x=pseudotime_diff,y=pseudotime_lps,col=cluster_0.2))+geom_point()+facet_wrap(~group)+theme_classic()+geom_hline(yintercept = c(7.0,10.5))
+ggplot(pseudotime_lps,aes(x=pseudotime_lps,fill=cluster_0.2))+geom_histogram(bins = 100)+facet_grid(group~.)+theme_classic()+geom_vline(xintercept = c(7.0,10.5))
