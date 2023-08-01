@@ -46,11 +46,21 @@ nlcl_granu$cluster_0.2=factor(nlcl_granu$integrated_snn_res.0.2,levels = c(4,3,1
 nlcl.markers_0.2=nlcl.markers_0.2[order(nlcl.markers_0.2$cluster_0.2),]
 top10_0.2 <- nlcl.markers_0.2 %>% group_by(clusterG) %>% top_n(n = 5, wt = avg_logFC)
 
-#Figure 3B
- DoHeatmap(nlcl_granu, features = top10_0.2$gene,group.by="cluster_0.2") + NoLegend()
- FeaturePlot(nlcl_granu, features = c("Elane", "Rps2", "Ube2c","Top2a","Cebpe","Chil3","Mmp8","Retnlg","Wfdc17","Ifitm1"),min.cutoff = 0) 
+nlcl_tsne_granu=Embeddings(object  = nlcl_granu[["tsne"]])[colnames(nlcl_granu), c(1,2)]
+nlcl_tsne_granu=data.frame(nlcl_tsne_granu)
+nlcl_tsne_granu$group=nlcl_granu$group[rownames(nlcl_tsne_granu)]
+nlcl_tsne_granu$celltype=nlcl_granu$celltype[rownames(nlcl_tsne_granu)]
+nlcl_tsne_granu$cluster=nlcl_granu$cluster_0.2[rownames(nlcl_tsne_granu)]
 
-select_gene=c("Elane", "Top2a","Cebpe","Mmp8","Ccl6","Ly6g","Itgam")
+select_gene=c("Elane", "Top2a","Cebpe","Mmp8","Ccl6")
+FeaturePlot(nlcl_granu, features = select_gene,min.cutoff = 0) 
+
+
+#Figure 3F
+ DoHeatmap(nlcl_granu, features = top10_0.2$gene,group.by="cluster_0.2") + NoLegend()
+
+ggplot(exp_nlcl_select,aes(x=tSNE_1,y=tSNE_2,col=log10(value+1)))+geom_point(size=0.5)+facet_grid(gene_short_name~.)+theme_classic()+scale_color_gradient(low="#EEEEEE",high="red")
+
 
 gene_nlcl<-load_cellranger_matrix("./CLP_LPS_aggr")
 fd_nlcl <- fData(gene_nlcl)
@@ -78,7 +88,7 @@ cds_nlcl_granu_ps <- reduceDimension(cds_nlcl_granu_ps,method = 'DDRTree',cores=
 cds_nlcl_granu_ps <- orderCells(cds_nlcl_granu_ps,reverse = T)
 plot_cell_trajectory(cds_nlcl_granu_ps,color_by = "cluster_seurat",show_branch_points=F)+facet_wrap(~group)
 
-#Figure 3C
+#Figure 3G
 ggplot(pData(cds_nlcl_granu_ps),aes(x=Pseudotime,fill=cluster_seurat))+geom_histogram(bins = 100)+theme_classic()+facet_grid(group~.)
 
 granu_nl_diff=data.frame()
@@ -129,6 +139,7 @@ cds_nlcl_granu_lps<-setOrderingFilter(cds_nlcl_granu,union(nl_sig,cl_sig))
 cds_nlcl_granu_lps<-setOrderingFilter(cds_nlcl_granu,rownames(list_lps_response))
 cds_nlcl_granu_lps <- reduceDimension(cds_nlcl_granu_lps,  reduction_method = 'DDRTree',cores=8)
 cds_nlcl_granu_lps <-orderCells(cds_nlcl_granu_lps,reverse = T)
+#Figure 3H
 plot_cell_trajectory(cds_nlcl_granu_lps,color_by = "cluster_0.2",show_branch_points = F)+facet_wrap(~group)
 
 pseudotime_lps=(pData(cds_nlcl_granu_lps))[,c(1,4,13,14,15)]
@@ -136,5 +147,15 @@ colnames(pseudotime_lps)[5]="pseudotime_lps"
 pseudotime_diff=pData(cds_nlcl_granu_ps)[,c(1,4,12,14)]
 colnames(pseudotime_diff)[3]="pseudotime_diff"
  pseudotime_lps=merge(pseudotime_lps,pseudotime_diff)
- ggplot(pseudotime_lps,aes(x=pseudotime_diff,y=pseudotime_lps,col=cluster_0.2))+geom_point()+facet_wrap(~group)+theme_classic()+geom_hline(yintercept = c(7.0,10.5))
+
+#Figure 3I
 ggplot(pseudotime_lps,aes(x=pseudotime_lps,fill=cluster_0.2))+geom_histogram(bins = 100)+facet_grid(group~.)+theme_classic()+geom_vline(xintercept = c(7.0,10.5))
+
+#Figure 3J
+select_gene=c("Tnf","Il1b")
+gene_ids=subset(fd_nlcl,gene_short_name %in% select_gene)[,c("id","gene_short_name")]
+exp_nlcl_select=melt(as.matrix(exp_cds_nlcl_granu[gene_ids$id,rownames(nlcl_tsne_granu)]))
+nlcl_tsne_granu$cellID=rownames(nlcl_tsne_granu)
+exp_nlcl_select=merge(exp_nlcl_select,nlcl_tsne_granu,by.x="Var2",by.y="cellID")
+exp_nlcl_select=merge(exp_nlcl_select,gene_ids,by.x="Var1",by.y="id")
+ggplot(exp_nlcl_select,aes(x=tSNE_1,y=tSNE_2,col=log10(value+1)))+geom_point(size=0.5)+facet_grid(gene_short_name~.)+theme_classic()+scale_color_gradient(low="#EEEEEE",high="red")
